@@ -1,0 +1,6 @@
+pyautogui
+opencv-python
+numpy
+steam-totp
+pywin32
+flask
