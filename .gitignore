@@ -1,0 +1,9 @@
+accounts.txt
+accounts.txt.backup
+account_guids.json
+found_matches.json
+maFiles/
+__pycache__/
+node_modules/
+*.log
+*.exe
