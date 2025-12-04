@@ -51,7 +51,7 @@ class SteamLauncherGUI:
     def __init__(self):
         self.root = ctk.CTk()
         self.root.title("🎮 CS2 Multi-Account Launcher")
-        self.root.geometry("700x600")
+        self.root.geometry("900x700")
         self.root.resizable(True, True)
         
         self.accounts = []
@@ -62,6 +62,10 @@ class SteamLauncherGUI:
         self.is_running = False
         self.failed_accounts = []
         self.first_account_launched = False  # Флаг: был ли запущен хотя бы один аккаунт
+        
+        # Лобби для автопринятия матчей
+        self.lobbies = []  # Список лобби: [{"id": 1, "accounts": ["acc1", "acc2"], "widgets": {...}}, ...]
+        self.lobby_counter = 0  # Счётчик для ID лобби
         
         self.load_colors()  # Загружаем сохраненные цвета
         self.setup_ui()
@@ -205,23 +209,24 @@ class SteamLauncherGUI:
         """Создает интерфейс приложения."""
         # Главный контейнер
         self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_columnconfigure(1, weight=1)
         self.root.grid_rowconfigure(1, weight=1)
         
         # === HEADER ===
         header_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        header_frame.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 5))
+        header_frame.grid(row=0, column=0, columnspan=2, sticky="ew", padx=20, pady=(15, 5))
         
         title_label = ctk.CTkLabel(header_frame, text="🎮 CS2 Multi-Account Launcher",
                                    font=ctk.CTkFont(size=24, weight="bold"))
         title_label.pack()
         
-        subtitle = ctk.CTkLabel(header_frame, text="Запуск нескольких аккаунтов через Avast Sandbox",
+        subtitle = ctk.CTkLabel(header_frame, text="Запуск аккаунтов + Автопринятие матчей",
                                 font=ctk.CTkFont(size=12), text_color="gray")
         subtitle.pack()
         
-        # === ACCOUNTS LIST ===
+        # === LEFT PANEL: ACCOUNTS ===
         accounts_container = ctk.CTkFrame(self.root)
-        accounts_container.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
+        accounts_container.grid(row=1, column=0, sticky="nsew", padx=(20, 10), pady=10)
         accounts_container.grid_columnconfigure(0, weight=1)
         accounts_container.grid_rowconfigure(1, weight=1)
         
@@ -233,9 +238,31 @@ class SteamLauncherGUI:
         self.scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         self.scrollable_frame.grid_columnconfigure(0, weight=1)
         
+        # === RIGHT PANEL: LOBBIES ===
+        lobbies_container = ctk.CTkFrame(self.root)
+        lobbies_container.grid(row=1, column=1, sticky="nsew", padx=(10, 20), pady=10)
+        lobbies_container.grid_columnconfigure(0, weight=1)
+        lobbies_container.grid_rowconfigure(1, weight=1)
+        
+        lobby_header_frame = ctk.CTkFrame(lobbies_container, fg_color="transparent")
+        lobby_header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+        
+        ctk.CTkLabel(lobby_header_frame, text="🎯 Лобби",
+                     font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        
+        self.add_lobby_btn = ctk.CTkButton(lobby_header_frame, text="+ Добавить",
+                                           command=self.add_lobby, width=100, height=28,
+                                           fg_color="#1a5a7f", hover_color="#2a7a9f",
+                                           font=ctk.CTkFont(size=11))
+        self.add_lobby_btn.pack(side="right")
+        
+        self.lobbies_scroll = ctk.CTkScrollableFrame(lobbies_container, fg_color="transparent")
+        self.lobbies_scroll.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.lobbies_scroll.grid_columnconfigure(0, weight=1)
+        
         # === SETTINGS ===
         settings_frame = ctk.CTkFrame(self.root)
-        settings_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=5)
+        settings_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=20, pady=5)
         settings_frame.grid_columnconfigure((0, 1), weight=1)
         
         # Смещение
@@ -262,7 +289,7 @@ class SteamLauncherGUI:
         
         # === BUTTONS ===
         buttons_frame = ctk.CTkFrame(self.root, fg_color="transparent")
-        buttons_frame.grid(row=3, column=0, sticky="ew", padx=20, pady=10)
+        buttons_frame.grid(row=3, column=0, columnspan=2, sticky="ew", padx=20, pady=10)
         buttons_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
         
         self.select_all_btn = ctk.CTkButton(buttons_frame, text="☑️ Все",
@@ -298,7 +325,7 @@ class SteamLauncherGUI:
         
         # === STATUS ===
         status_frame = ctk.CTkFrame(self.root)
-        status_frame.grid(row=4, column=0, sticky="ew", padx=20, pady=(5, 15))
+        status_frame.grid(row=4, column=0, columnspan=2, sticky="ew", padx=20, pady=(5, 15))
         status_frame.grid_columnconfigure(0, weight=1)
         
         self.status_label = ctk.CTkLabel(status_frame, text="✅ Готов к запуску",
@@ -426,6 +453,89 @@ class SteamLauncherGUI:
         """Снимает выделение со всех аккаунтов."""
         for var in self.account_vars:
             var.set(False)
+    
+    # === LOBBY METHODS ===
+    
+    def add_lobby(self):
+        """Добавляет новое лобби."""
+        self.lobby_counter += 1
+        lobby_id = self.lobby_counter
+        
+        # Создаём фрейм лобби
+        lobby_frame = ctk.CTkFrame(self.lobbies_scroll, fg_color="#1a2a1a", corner_radius=8)
+        lobby_frame.grid(row=len(self.lobbies), column=0, sticky="ew", pady=4, padx=3)
+        lobby_frame.grid_columnconfigure(0, weight=1)
+        
+        # Заголовок лобби
+        header = ctk.CTkFrame(lobby_frame, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=8, pady=(8, 4))
+        
+        ctk.CTkLabel(header, text=f"Лобби {lobby_id}",
+                     font=ctk.CTkFont(size=12, weight="bold")).pack(side="left")
+        
+        delete_btn = ctk.CTkButton(header, text="✕", width=28, height=24,
+                                   fg_color="#5a2727", hover_color="#7a3737",
+                                   font=ctk.CTkFont(size=12),
+                                   command=lambda lid=lobby_id: self.remove_lobby(lid))
+        delete_btn.pack(side="right")
+        
+        # Контейнер для аккаунтов в лобби
+        accounts_frame = ctk.CTkFrame(lobby_frame, fg_color="transparent")
+        accounts_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        
+        # Список аккаунтов для выбора
+        account_names = [acc['login'] for acc in self.accounts]
+        
+        # Первый слот
+        slot1_var = ctk.StringVar(value="Выбрать...")
+        slot1 = ctk.CTkComboBox(accounts_frame, values=account_names, variable=slot1_var,
+                                width=120, font=ctk.CTkFont(size=11),
+                                state="readonly" if account_names else "disabled")
+        slot1.pack(side="left", padx=(0, 5))
+        
+        # Второй слот
+        slot2_var = ctk.StringVar(value="Выбрать...")
+        slot2 = ctk.CTkComboBox(accounts_frame, values=account_names, variable=slot2_var,
+                                width=120, font=ctk.CTkFont(size=11),
+                                state="readonly" if account_names else "disabled")
+        slot2.pack(side="left", padx=5)
+        
+        # Сохраняем данные лобби
+        lobby_data = {
+            "id": lobby_id,
+            "frame": lobby_frame,
+            "slot1_var": slot1_var,
+            "slot2_var": slot2_var
+        }
+        self.lobbies.append(lobby_data)
+        
+        print(f"✅ Создано лобби {lobby_id}")
+    
+    def remove_lobby(self, lobby_id):
+        """Удаляет лобби по ID."""
+        for i, lobby in enumerate(self.lobbies):
+            if lobby["id"] == lobby_id:
+                lobby["frame"].destroy()
+                self.lobbies.pop(i)
+                # Перестраиваем grid
+                for j, remaining_lobby in enumerate(self.lobbies):
+                    remaining_lobby["frame"].grid(row=j, column=0, sticky="ew", pady=4, padx=3)
+                print(f"🗑️ Удалено лобби {lobby_id}")
+                break
+    
+    def get_lobbies_config(self):
+        """Возвращает текущую конфигурацию лобби."""
+        config = []
+        for lobby in self.lobbies:
+            acc1 = lobby["slot1_var"].get()
+            acc2 = lobby["slot2_var"].get()
+            if acc1 != "Выбрать..." and acc2 != "Выбрать...":
+                config.append({
+                    "id": lobby["id"],
+                    "accounts": [acc1, acc2]
+                })
+        return config
+    
     def set_csgo_launch_options(self, width, height):
     
         try:
