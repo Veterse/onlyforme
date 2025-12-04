@@ -3,12 +3,16 @@ import os
 import time
 import json
 import pyautogui
-import tkinter as tk
-from tkinter import ttk, messagebox
+import customtkinter as ctk
+from tkinter import messagebox
 import threading
 import cv2
 import numpy as np
 import random
+
+# Настройки CustomTkinter
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 
 try:
     from steam_totp import generate_twofactor_code_for_time
@@ -45,15 +49,16 @@ COLORS_FILE_PATH = "account_colors.json"
 
 class SteamLauncherGUI:
     def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("Steam Multi-Account Launcher")
-        self.root.geometry("600x500")
+        self.root = ctk.CTk()
+        self.root.title("🎮 CS2 Multi-Account Launcher")
+        self.root.geometry("700x600")
         self.root.resizable(True, True)
         
         self.accounts = []
         self.account_vars = []
         self.account_colors = {}  # Словарь для хранения цветов аккаунтов
         self.account_frames = []  # Список фреймов аккаунтов для изменения цвета
+        self.account_color_btns = []  # Кнопки цвета
         self.is_running = False
         self.failed_accounts = []
         self.first_account_launched = False  # Флаг: был ли запущен хотя бы один аккаунт
@@ -112,8 +117,8 @@ class SteamLauncherGUI:
         """Возвращает цвет фона для аккаунта."""
         color = self.account_colors.get(login, "white")
         if color == "red":
-            return "#ffcccb"  # Светло-красный
-        return "white"
+            return "#3d1a1a"  # Тёмно-красный для dark mode
+        return "#1a1a2e"  # Тёмно-синий для dark mode
     
     def find_steam_element_cv(self, template_path, confidence=0.8):
         """Находит элемент Steam используя OpenCV template matching."""
@@ -198,127 +203,115 @@ class SteamLauncherGUI:
         
     def setup_ui(self):
         """Создает интерфейс приложения."""
-        # Заголовок
-        title_frame = tk.Frame(self.root)
-        title_frame.pack(pady=10)
+        # Главный контейнер
+        self.root.grid_columnconfigure(0, weight=1)
+        self.root.grid_rowconfigure(1, weight=1)
         
-        title_label = tk.Label(title_frame, text="🎮 Steam Multi-Account Launcher", 
-                              font=("Arial", 16, "bold"))
+        # === HEADER ===
+        header_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        header_frame.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 5))
+        
+        title_label = ctk.CTkLabel(header_frame, text="🎮 CS2 Multi-Account Launcher",
+                                   font=ctk.CTkFont(size=24, weight="bold"))
         title_label.pack()
         
-        # Фрейм для списка аккаунтов
-        accounts_frame = tk.LabelFrame(self.root, text="Выберите аккаунты для запуска:", 
-                                     font=("Arial", 12))
-        accounts_frame.pack(fill="both", expand=True, padx=20, pady=10)
+        subtitle = ctk.CTkLabel(header_frame, text="Запуск нескольких аккаунтов через Avast Sandbox",
+                                font=ctk.CTkFont(size=12), text_color="gray")
+        subtitle.pack()
         
-        # Скролл для списка аккаунтов
-        canvas = tk.Canvas(accounts_frame)
-        scrollbar = ttk.Scrollbar(accounts_frame, orient="vertical", command=canvas.yview)
-        self.scrollable_frame = tk.Frame(canvas)
+        # === ACCOUNTS LIST ===
+        accounts_container = ctk.CTkFrame(self.root)
+        accounts_container.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
+        accounts_container.grid_columnconfigure(0, weight=1)
+        accounts_container.grid_rowconfigure(1, weight=1)
         
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
+        list_header = ctk.CTkLabel(accounts_container, text="📋 Аккаунты",
+                                   font=ctk.CTkFont(size=14, weight="bold"))
+        list_header.grid(row=0, column=0, sticky="w", padx=15, pady=(10, 5))
         
-        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.scrollable_frame = ctk.CTkScrollableFrame(accounts_container, fg_color="transparent")
+        self.scrollable_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.scrollable_frame.grid_columnconfigure(0, weight=1)
         
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # === SETTINGS ===
+        settings_frame = ctk.CTkFrame(self.root)
+        settings_frame.grid(row=2, column=0, sticky="ew", padx=20, pady=5)
+        settings_frame.grid_columnconfigure((0, 1), weight=1)
         
-        # Фрейм для настроек позиционирования
-        position_frame = tk.LabelFrame(self.root, text="Настройки позиционирования окон:", 
-                                     font=("Arial", 10))
-        position_frame.pack(fill="x", padx=20, pady=(0, 10))
+        # Смещение
+        offset_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        offset_frame.grid(row=0, column=0, sticky="w", padx=15, pady=10)
         
-        # Поле для ввода количества уже запущенных аккаунтов
-        offset_frame = tk.Frame(position_frame)
-        offset_frame.pack(pady=5)
+        ctk.CTkLabel(offset_frame, text="⚙️ Уже запущено:",
+                     font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 8))
         
-        tk.Label(offset_frame, text="Уже запущено аккаунтов:", 
-                font=("Arial", 10)).pack(side="left", padx=5)
+        self.offset_var = ctk.StringVar(value="0")
+        self.offset_entry = ctk.CTkEntry(offset_frame, textvariable=self.offset_var,
+                                         width=50, font=ctk.CTkFont(size=13), justify="center")
+        self.offset_entry.pack(side="left")
         
-        self.offset_var = tk.StringVar(value="0")
-        self.offset_entry = tk.Entry(offset_frame, textvariable=self.offset_var, 
-                                   width=5, font=("Arial", 10))
-        self.offset_entry.pack(side="left", padx=5)
+        # Быстрый режим
+        fast_frame = ctk.CTkFrame(settings_frame, fg_color="transparent")
+        fast_frame.grid(row=0, column=1, sticky="e", padx=15, pady=10)
         
-        tk.Label(offset_frame, text="(новые окна будут размещены после них)", 
-                font=("Arial", 9), fg="gray").pack(side="left", padx=5)
+        self.fast_mode_var = ctk.BooleanVar(value=False)
+        self.fast_mode_switch = ctk.CTkSwitch(fast_frame, text="⚡ Быстрый режим (80 сек)",
+                                              variable=self.fast_mode_var,
+                                              font=ctk.CTkFont(size=12))
+        self.fast_mode_switch.pack(side="right")
         
-        # Галка быстрого режима
-        fast_mode_frame = tk.Frame(position_frame)
-        fast_mode_frame.pack(pady=5)
+        # === BUTTONS ===
+        buttons_frame = ctk.CTkFrame(self.root, fg_color="transparent")
+        buttons_frame.grid(row=3, column=0, sticky="ew", padx=20, pady=10)
+        buttons_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
         
-        self.fast_mode_var = tk.BooleanVar(value=False)
-        fast_mode_checkbox = tk.Checkbutton(fast_mode_frame, 
-                                           text="⚡ Быстрый режим (все аккаунты по 80 сек)", 
-                                           variable=self.fast_mode_var,
-                                           font=("Arial", 10))
-        fast_mode_checkbox.pack(side="left", padx=5)
+        self.select_all_btn = ctk.CTkButton(buttons_frame, text="☑️ Все",
+                                            command=self.select_all_accounts,
+                                            fg_color="#2d5a27", hover_color="#3d7a37",
+                                            font=ctk.CTkFont(size=12), height=38)
+        self.select_all_btn.grid(row=0, column=0, padx=3, sticky="ew")
         
-        tk.Label(fast_mode_frame, text="(иначе: первый 130 сек, остальные 80 сек)", 
-                font=("Arial", 9), fg="gray").pack(side="left", padx=5)
+        self.deselect_btn = ctk.CTkButton(buttons_frame, text="⬜ Снять",
+                                          command=self.deselect_all_accounts,
+                                          fg_color="#5a4527", hover_color="#7a5537",
+                                          font=ctk.CTkFont(size=12), height=38)
+        self.deselect_btn.grid(row=0, column=1, padx=3, sticky="ew")
         
-        # Кнопки управления
-        buttons_frame = tk.Frame(self.root)
-        buttons_frame.pack(pady=10)
+        self.launch_btn = ctk.CTkButton(buttons_frame, text="🚀 ЗАПУСТИТЬ",
+                                        command=self.start_launching,
+                                        fg_color="#1a7f37", hover_color="#2ea44f",
+                                        font=ctk.CTkFont(size=14, weight="bold"), height=42)
+        self.launch_btn.grid(row=0, column=2, padx=8, sticky="ew")
         
-        # Кнопка "Выбрать все"
-        select_all_btn = tk.Button(buttons_frame, text="Выбрать все", 
-                                  command=self.select_all_accounts,
-                                  bg="#e1f5fe", font=("Arial", 10))
-        select_all_btn.pack(side="left", padx=5)
+        self.stop_btn = ctk.CTkButton(buttons_frame, text="⏹ СТОП",
+                                      command=self.stop_launching,
+                                      fg_color="#8b0000", hover_color="#b22222",
+                                      font=ctk.CTkFont(size=12, weight="bold"), height=38,
+                                      state="disabled")
+        self.stop_btn.grid(row=0, column=3, padx=3, sticky="ew")
         
-        # Кнопка "Снять выделение"
-        deselect_all_btn = tk.Button(buttons_frame, text="Снять все", 
-                                   command=self.deselect_all_accounts,
-                                   bg="#fff3e0", font=("Arial", 10))
-        deselect_all_btn.pack(side="left", padx=5)
+        self.shuffle_btn = ctk.CTkButton(buttons_frame, text="🔀 SHUFFLE",
+                                         command=self.shuffle_lobbies,
+                                         fg_color="#6b2d7b", hover_color="#8b3d9b",
+                                         font=ctk.CTkFont(size=12, weight="bold"), height=38)
+        self.shuffle_btn.grid(row=0, column=4, padx=3, sticky="ew")
         
-        # Кнопка запуска
-        self.launch_btn = tk.Button(buttons_frame, text="🚀 ЗАПУСТИТЬ", 
-                                   command=self.start_launching,
-                                   bg="#4caf50", fg="white", font=("Arial", 12, "bold"))
-        self.launch_btn.pack(side="left", padx=20)
+        # === STATUS ===
+        status_frame = ctk.CTkFrame(self.root)
+        status_frame.grid(row=4, column=0, sticky="ew", padx=20, pady=(5, 15))
+        status_frame.grid_columnconfigure(0, weight=1)
         
-        # Кнопка остановки
-        self.stop_btn = tk.Button(buttons_frame, text="⏹ ОСТАНОВИТЬ", 
-                                 command=self.stop_launching,
-                                 bg="#f44336", fg="white", font=("Arial", 12, "bold"),
-                                 state="disabled")
-        self.stop_btn.pack(side="left", padx=5)
+        self.status_label = ctk.CTkLabel(status_frame, text="✅ Готов к запуску",
+                                         font=ctk.CTkFont(size=12), anchor="w")
+        self.status_label.grid(row=0, column=0, sticky="ew", padx=15, pady=(8, 4))
         
-        # Кнопка Shuffle Lobbies
-        self.shuffle_btn = tk.Button(buttons_frame, text="🔀 SHUFFLE LOBBIES", 
-                                    command=self.shuffle_lobbies,
-                                    bg="#9c27b0", fg="white", font=("Arial", 11, "bold"))
-        self.shuffle_btn.pack(side="left", padx=10)
-        
-        # Статус бар
-        status_frame = tk.Frame(self.root)
-        status_frame.pack(fill="x", pady=5)
-        
-        self.status_label = tk.Label(status_frame, text="Готов к запуску", 
-                                   relief="sunken", anchor="w")
-        self.status_label.pack(fill="x", padx=20)
-        
-        # Прогресс бар
-        self.progress = ttk.Progressbar(self.root, mode='determinate')
-        self.progress.pack(fill="x", padx=20, pady=5)
-        
-        # Добавляем подсказку о цветах
-        hint_frame = tk.Frame(self.root)
-        hint_frame.pack(fill="x", padx=20)
-        
-        hint_label = tk.Label(hint_frame, text="💡 Подсказка: Левые галочки = выбор для запуска, правые 🎨 = смена цвета (белый/красный)", 
-                             font=("Arial", 9), fg="gray")
-        hint_label.pack()
+        self.progress = ctk.CTkProgressBar(status_frame, height=6)
+        self.progress.grid(row=1, column=0, sticky="ew", padx=15, pady=(0, 10))
+        self.progress.set(0)
         
     def load_accounts(self):
         """Загружает список аккаунтов из файлов."""
-        self.status_label.config(text="Загружаю список аккаунтов...")
+        self.status_label.configure(text="⏳ Загружаю аккаунты...")
         
         try:
             if not os.path.exists(ACCOUNTS_FILE_PATH):
@@ -359,88 +352,70 @@ class SteamLauncherGUI:
                         if not mafile_found:
                             print(f"⚠️ maFile для аккаунта '{login}' не найден!")
             
-            # Создаем чекбоксы для каждого аккаунта
+            # Создаем виджеты для каждого аккаунта
             for i, account in enumerate(self.accounts):
-                var = tk.BooleanVar()
-                self.account_vars.append(var)
-                
-                # Создаем фрейм с цветом
-                frame = tk.Frame(self.scrollable_frame, relief="solid", bd=1, 
-                               bg=self.get_account_color(account['login']))
-                frame.pack(fill="x", padx=10, pady=2)
-                self.account_frames.append(frame)
-                
-                # Внутренний фрейм для содержимого
-                content_frame = tk.Frame(frame, bg=frame.cget('bg'))
-                content_frame.pack(fill="x", padx=5, pady=3)
-                
-                # Левая часть - чекбокс для выбора аккаунта
-                left_frame = tk.Frame(content_frame, bg=frame.cget('bg'))
-                left_frame.pack(side="left", fill="x", expand=True)
-                
-                checkbox = tk.Checkbutton(left_frame, text=f"🎮 {account['login']}", 
-                                        variable=var, font=("Arial", 11),
-                                        bg=frame.cget('bg'), activebackground=frame.cget('bg'))
-                checkbox.pack(side="left")
-                
-                # Показываем статус maFile
-                status_label = tk.Label(left_frame, text="✅ maFile найден", 
-                                      fg="green", font=("Arial", 9),
-                                      bg=frame.cget('bg'))
-                status_label.pack(side="left", padx=(10, 0))
-                
-                # Правая часть - большой чекбокс для смены цвета
-                right_frame = tk.Frame(content_frame, bg=frame.cget('bg'))
-                right_frame.pack(side="right")
-                
-                # Создаем переменную для цветового чекбокса
-                color_var = tk.BooleanVar()
-                color_var.set(self.account_colors.get(account['login'], "white") == "red")
-                
-                def make_color_toggle_command(login, frame, color_var):
-                    def toggle_command():
-                        if color_var.get():
-                            # Красный цвет
-                            new_color = "#ffcccb"
-                            self.account_colors[login] = "red"
-                        else:
-                            # Белый цвет
-                            new_color = "white"
-                            self.account_colors[login] = "white"
-                        
-                        # Обновляем цвет всех элементов
-                        frame.config(bg=new_color)
-                        for child in frame.winfo_children():
-                            self.update_bg_recursive(child, new_color)
-                        
-                        self.save_colors()
-                        print(f"🎨 Цвет аккаунта {login} изменен на {self.account_colors[login]}")
-                    return toggle_command
-                
-                color_checkbox = tk.Checkbutton(right_frame, 
-                                              text="🎨", 
-                                              variable=color_var,
-                                              font=("Arial", 16),
-                                              bg=frame.cget('bg'), 
-                                              activebackground=frame.cget('bg'),
-                                              command=make_color_toggle_command(account['login'], frame, color_var))
-                color_checkbox.pack(side="right")
+                self.create_account_widget(i, account)
             
-            self.status_label.config(text=f"Загружено аккаунтов: {len(self.accounts)}")
+            self.status_label.configure(text=f"✅ Загружено {len(self.accounts)} аккаунтов")
             
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при загрузке аккаунтов: {e}")
-            self.status_label.config(text="Ошибка загрузки аккаунтов")
+            self.status_label.configure(text="❌ Ошибка загрузки аккаунтов")
     
-    def update_bg_recursive(self, widget, color):
-        """Рекурсивно обновляет цвет фона для всех дочерних виджетов."""
-        try:
-            if widget.winfo_class() in ['Frame', 'Label', 'Checkbutton']:
-                widget.config(bg=color)
-            for child in widget.winfo_children():
-                self.update_bg_recursive(child, color)
-        except:
-            pass
+    def create_account_widget(self, index, account):
+        """Создает виджет для одного аккаунта."""
+        login = account['login']
+        is_red = self.account_colors.get(login, "white") == "red"
+        
+        # Фрейм аккаунта
+        frame = ctk.CTkFrame(self.scrollable_frame,
+                             fg_color="#3d1a1a" if is_red else "#1a1a2e",
+                             corner_radius=8)
+        frame.grid(row=index, column=0, sticky="ew", pady=3, padx=5)
+        frame.grid_columnconfigure(1, weight=1)
+        self.account_frames.append(frame)
+        
+        # Чекбокс выбора
+        var = ctk.BooleanVar(value=False)
+        self.account_vars.append(var)
+        
+        checkbox = ctk.CTkCheckBox(frame, text="", variable=var,
+                                   width=24, checkbox_width=22, checkbox_height=22,
+                                   corner_radius=5, fg_color="#1a7f37", hover_color="#2ea44f")
+        checkbox.grid(row=0, column=0, padx=(12, 8), pady=10)
+        
+        # Имя аккаунта
+        name_label = ctk.CTkLabel(frame, text=f"🎮 {login}",
+                                  font=ctk.CTkFont(size=13, weight="bold"), anchor="w")
+        name_label.grid(row=0, column=1, sticky="w", pady=10)
+        
+        # Статус maFile
+        status_label = ctk.CTkLabel(frame, text="✅ maFile",
+                                    font=ctk.CTkFont(size=11), text_color="#4ade80")
+        status_label.grid(row=0, column=2, padx=10, pady=10)
+        
+        # Кнопка цвета
+        color_btn = ctk.CTkButton(frame, text="🎨", width=36, height=28,
+                                  fg_color="#8b0000" if is_red else "#2d2d44",
+                                  hover_color="#b22222" if is_red else "#3d3d54",
+                                  font=ctk.CTkFont(size=14),
+                                  command=lambda l=login, idx=index: self.toggle_color(l, idx))
+        color_btn.grid(row=0, column=3, padx=(5, 12), pady=10)
+        self.account_color_btns.append(color_btn)
+    
+    def toggle_color(self, login, index):
+        """Переключает цвет аккаунта."""
+        current = self.account_colors.get(login, "white")
+        new_color = "white" if current == "red" else "red"
+        self.account_colors[login] = new_color
+        
+        is_red = new_color == "red"
+        self.account_frames[index].configure(fg_color="#3d1a1a" if is_red else "#1a1a2e")
+        self.account_color_btns[index].configure(
+            fg_color="#8b0000" if is_red else "#2d2d44",
+            hover_color="#b22222" if is_red else "#3d3d54"
+        )
+        self.save_colors()
     
     def select_all_accounts(self):
         """Выбирает все аккаунты."""
@@ -580,8 +555,8 @@ class SteamLauncherGUI:
         
         if result:
             self.is_running = True
-            self.launch_btn.config(state="disabled")
-            self.stop_btn.config(state="normal")
+            self.launch_btn.configure(state="disabled")
+            self.stop_btn.configure(state="normal")
             
             # Запускаем в отдельном потоке
             thread = threading.Thread(target=self.launch_accounts_thread, 
@@ -591,10 +566,10 @@ class SteamLauncherGUI:
     def stop_launching(self):
         """Останавливает процесс запуска."""
         self.is_running = False
-        self.launch_btn.config(state="normal")
-        self.stop_btn.config(state="disabled")
-        self.status_label.config(text="Остановлено пользователем")
-        self.progress['value'] = 0
+        self.launch_btn.configure(state="normal")
+        self.stop_btn.configure(state="disabled")
+        self.status_label.configure(text="⏹ Остановлено пользователем")
+        self.progress.set(0)
     
     def launch_accounts_thread(self, selected_accounts):
         """Поток для запуска аккаунтов по очереди."""
@@ -617,8 +592,8 @@ class SteamLauncherGUI:
                 
             try:
                 print(f"🔍 ОТЛАДКА: Обновляю статус для аккаунта {account['login']}")
-                self.root.after(0, lambda: self.status_label.config(
-                    text=f"Запускаю аккаунт {i+1}/{total_accounts}: {account['login']}"))
+                self.root.after(0, lambda: self.status_label.configure(
+                    text=f"🚀 Запускаю {i+1}/{total_accounts}: {account['login']}"))
                 
                 # Вычисляем позицию окна для этого аккаунта
                 window_pos = self.calculate_window_position(i)
@@ -631,18 +606,18 @@ class SteamLauncherGUI:
                 
                 if success:
                     print(f"🔍 ОТЛАДКА: Аккаунт {account['login']} успешен")
-                    self.root.after(0, lambda: self.status_label.config(
-                        text=f"Аккаунт {account['login']} запущен успешно!"))
+                    self.root.after(0, lambda: self.status_label.configure(
+                        text=f"✅ {account['login']} запущен!"))
                 else:
                     print(f"🔍 ОТЛАДКА: Ошибка аккаунта {account['login']}")
                     self.failed_accounts.append(account['login'])
-                    self.root.after(0, lambda: self.status_label.config(
-                        text=f"Ошибка запуска аккаунта {account['login']}"))
+                    self.root.after(0, lambda: self.status_label.configure(
+                        text=f"❌ Ошибка: {account['login']}"))
                 
                 # Обновляем прогресс
-                progress_value = ((i + 1) / total_accounts) * 100
-                print(f"🔍 ОТЛАДКА: Прогресс: {progress_value}%")
-                self.root.after(0, lambda: self.progress.config(value=progress_value))
+                progress_value = (i + 1) / total_accounts
+                print(f"🔍 ОТЛАДКА: Прогресс: {progress_value*100}%")
+                self.root.after(0, lambda pv=progress_value: self.progress.set(pv))
                 
                 print(f"🔍 ОТЛАДКА: Завершил аккаунт {i+1}/{total_accounts}")
                 
@@ -673,14 +648,14 @@ class SteamLauncherGUI:
                 print(error_msg)
             
             success_count = total_accounts - len(self.failed_accounts)
-            self.root.after(0, lambda: self.status_label.config(
-                text=f"Завершено! Успешно: {success_count}/{total_accounts}"))
+            self.root.after(0, lambda: self.status_label.configure(
+                text=f"✅ Завершено! Успешно: {success_count}/{total_accounts}"))
             self.failed_accounts = []
         else:
             print(f"🔍 ОТЛАДКА: Завершение прервано")
         
-        self.root.after(0, lambda: self.launch_btn.config(state="normal"))
-        self.root.after(0, lambda: self.stop_btn.config(state="disabled"))
+        self.root.after(0, lambda: self.launch_btn.configure(state="normal"))
+        self.root.after(0, lambda: self.stop_btn.configure(state="disabled"))
         self.is_running = False
         print(f"🔍 ОТЛАДКА: launch_accounts_thread завершен")
     
